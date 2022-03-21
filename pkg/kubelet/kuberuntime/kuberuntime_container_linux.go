@@ -22,6 +22,11 @@ package kuberuntime
 import (
 	"strconv"
 	"time"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+//JMT	"strings"
 
 	libcontainercgroups "github.com/opencontainers/runc/libcontainer/cgroups"
 	cgroupfs "github.com/opencontainers/runc/libcontainer/cgroups/fs"
@@ -47,6 +52,7 @@ func (m *kubeGenericRuntimeManager) applyPlatformSpecificContainerConfig(config 
 		enforceMemoryQoS = true
 	}
 	config.Linux = m.generateLinuxContainerConfig(container, pod, uid, username, nsTarget, enforceMemoryQoS)
+	generateApparmorProfile(config)
 	return nil
 }
 
@@ -204,4 +210,74 @@ func GetHugepageLimitsFromResources(resources v1.ResourceRequirements) []*runtim
 	}
 
 	return hugepageLimits
+}
+
+// generateApparmorProfile generates a new profile based on resources needed in the container
+func generateApparmorProfile(config *runtimeapi.ContainerConfig) {
+	klog.Infof("JMT configured AppArmorProfile: %s", config.Linux.SecurityContext.ApparmorProfile)
+
+	// Only generate a new profile if one is not specified
+	if config.Linux.SecurityContext.ApparmorProfile != v1.AppArmorBetaProfileNameDynamic {
+		return
+	}
+
+	//TODO build off of default profile for container instead of starting from scratch?
+	profile_name := "k8s-dynamic-" + config.Metadata.Name
+	profile := fmt.Sprintf("#include <tunables/global>\nprofile %s flags=(attach_disconnected) {\n#include<abstractions/base>\nfile,\n", profile_name)
+
+	for _, mount := range config.Mounts {
+		permissions := "rw"
+		if mount.Readonly {
+			permissions = "r"
+		}
+
+		/*JMT deny specific mount to verify apparmor
+		if strings.Contains(mount.ContainerPath, "hello-testvol") {
+			//
+			profile = profile + fmt.Sprintf("  audit deny %s/** %s,\n", mount.ContainerPath, permissions)
+		} else {
+			profile = profile + fmt.Sprintf("  allow %s/** %s,\n", mount.ContainerPath, permissions)
+		}
+		*/
+
+		profile = profile + fmt.Sprintf("  allow %s/** %s,\n", mount.ContainerPath, permissions)
+	}
+
+	profile = profile + "}\n"
+	profile_path := "/tmp/" + profile_name
+	klog.Infof("JMT generated profile: %s", profile_path)
+
+	// Save the profile to disk
+	f, err := os.Create(profile_path)
+	if err == nil {
+		_, err := f.WriteString(profile)
+		if err != nil {
+			klog.Infof("JMT error writing AppArmor profile to file: %s", profile_path)
+		}
+	} else {
+		klog.Infof("JMT error creating AppArmor profile: %s", profile_path)
+	}
+
+	// Load the AppArmor profile
+	parser := exec.Command("apparmor_parser", "-r")
+	stdin, err := parser.StdinPipe()
+
+	if err != nil {
+		klog.Infof("JMT error getting stdin pipe for apparmor_parser")
+		return
+	}
+
+	go func() {
+		defer stdin.Close()
+		io.WriteString(stdin, profile)
+	}()
+
+	out, err := parser.CombinedOutput()
+	if err != nil {
+		klog.Infof("JMT error getting output for apparmor_parser")
+		return
+	}
+
+	klog.Infof("JMT apparmor_parser output: %s", out)
+	config.Linux.SecurityContext.ApparmorProfile = profile_name
 }

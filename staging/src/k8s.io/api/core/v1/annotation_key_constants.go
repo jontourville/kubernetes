@@ -70,6 +70,9 @@ const (
 	// AppArmorBetaProfileNameUnconfined is the Unconfined AppArmor profile
 	AppArmorBetaProfileNameUnconfined = "unconfined"
 
+	// AppArmorBetaProfileNameDynamic is the Dynamic AppArmor profile
+	AppArmorBetaProfileNameDynamic = "dynamic"
+
 	// DeprecatedSeccompProfileDockerDefault represents the default seccomp profile used by docker.
 	// Deprecated: set a pod or container security context `seccompProfile` of type "RuntimeDefault" instead.
 	DeprecatedSeccompProfileDockerDefault string = "docker/default"

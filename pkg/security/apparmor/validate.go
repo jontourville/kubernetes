@@ -137,7 +137,7 @@ func validateProfile(profile string, loadedProfiles map[string]bool) error {
 
 // ValidateProfileFormat checks the format of the profile.
 func ValidateProfileFormat(profile string) error {
-	if profile == "" || profile == v1.AppArmorBetaProfileRuntimeDefault || profile == v1.AppArmorBetaProfileNameUnconfined {
+	if profile == "" || profile == v1.AppArmorBetaProfileRuntimeDefault || profile == v1.AppArmorBetaProfileNameUnconfined || profile == v1.AppArmorBetaProfileNameDynamic {
 		return nil
 	}
 	if !strings.HasPrefix(profile, v1.AppArmorBetaProfileNamePrefix) {
